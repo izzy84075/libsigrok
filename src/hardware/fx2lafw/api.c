@@ -316,7 +316,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 		if (!prof)
 			continue;
 		
-		if(prof->DEV_CAPS & DEV_CAPS_FX3) {
+		if(prof->dev_caps & DEV_CAPS_FX3) {
 			has_firmware = usb_match_manuf_prod(devlist[i],
 				"sigrok", "fx3lafw");
 			if(!has_firmware) {
