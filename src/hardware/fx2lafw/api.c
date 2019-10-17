@@ -111,6 +111,13 @@ static const struct fx2lafw_profile supported_fx2[] = {
 	{ 0x1d50, 0x608f, "sigrok", "usb-c-grok", NULL,
 		"fx2lafw-usb-c-grok.fw",
 		0, NULL, NULL},
+	
+	/*
+	 * Cypress SuperSpeed Explorer Kit (CYUSB3KIT-003)
+	 */
+	{ 0x04b4, 0x00f3, "Cypress", "SuperSpeed Explorer Kit", NULL,
+		"fx3lafw-cypress-fx3.fw",
+		DEV_CAPS_FX3 | DEV_CAPS_32BIT, NULL, NULL },
 
 	ALL_ZERO
 };
@@ -158,7 +165,28 @@ static const uint64_t samplerates[] = {
 	SR_MHZ(16),
 	SR_MHZ(24),
 	SR_MHZ(48),
+	/* FX3 only rates below here */
+	SR_MHZ(64),
+	SR_MHZ(96),
+	SR_MHZ(192),
+#define NUM_FX3_RATES 3
 };
+
+static gboolean is_plausible_fx3(const struct libusb_device_descriptor *des)
+{
+	int i;
+
+	for (i = 0; supported_fx2[i].vid; i++) {
+        if( !(supported_fx2[i].dev_caps & DEV_CAPS_FX3) )
+            continue;
+        if (des->idVendor != supported_fx2[i].vid)
+            continue;
+        if (des->idProduct == supported_fx2[i].pid)
+            return TRUE;
+	}
+
+	return FALSE;
+}
 
 static gboolean is_plausible(const struct libusb_device_descriptor *des)
 {
@@ -186,6 +214,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 	const struct fx2lafw_profile *prof;
 	GSList *l, *devices, *conn_devices;
 	gboolean has_firmware;
+	gboolean fx3_needed_firmware;
 	struct libusb_device_descriptor des;
 	libusb_device **devlist;
 	struct libusb_device_handle *hdl;
@@ -210,9 +239,114 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 		conn_devices = sr_usb_find(drvc->sr_ctx->libusb_ctx, conn);
 	else
 		conn_devices = NULL;
+	
+	/* Check for any fx3lafw compatible devices and upload firmware to them. */
+	/* This is necessary as a separate step because fx3lafw devices will changes busses, and thus require refreshing the device list to correctly connect. */
+	devices = NULL;
+	libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
+		for (i = 0; devlist[i]; i++) {
+		if (conn) {
+			usb = NULL;
+			for (l = conn_devices; l; l = l->next) {
+				usb = l->data;
+				if (usb->bus == libusb_get_bus_number(devlist[i])
+					&& usb->address == libusb_get_device_address(devlist[i]))
+					break;
+			}
+			if (!l)
+				/* This device matched none of the ones that
+				 * matched the conn specification. */
+				continue;
+		}
+
+		libusb_get_device_descriptor( devlist[i], &des);
+
+		if (!is_plausible_fx3(&des))
+			continue;
+
+		if ((ret = libusb_open(devlist[i], &hdl)) < 0) {
+			sr_warn("Failed to open potential device with "
+				"VID:PID %04x:%04x: %s.", des.idVendor,
+				des.idProduct, libusb_error_name(ret));
+			continue;
+		}
+
+		if (des.iManufacturer == 0) {
+			manufacturer[0] = '\0';
+		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
+				des.iManufacturer, (unsigned char *) manufacturer,
+				sizeof(manufacturer))) < 0) {
+			sr_warn("Failed to get manufacturer string descriptor: %s.",
+				libusb_error_name(ret));
+			continue;
+		}
+
+		if (des.iProduct == 0) {
+			product[0] = '\0';
+		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
+				des.iProduct, (unsigned char *) product,
+				sizeof(product))) < 0) {
+			sr_warn("Failed to get product string descriptor: %s.",
+				libusb_error_name(ret));
+			continue;
+		}
+
+		if (des.iSerialNumber == 0) {
+			serial_num[0] = '\0';
+		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
+				des.iSerialNumber, (unsigned char *) serial_num,
+				sizeof(serial_num))) < 0) {
+			sr_warn("Failed to get serial number string descriptor: %s.",
+				libusb_error_name(ret));
+			continue;
+		}
+
+		libusb_close(hdl);
+
+		if (usb_get_port_path(devlist[i], connection_id, sizeof(connection_id)) < 0)
+			continue;
+
+		prof = NULL;
+		for (j = 0; supported_fx2[j].vid; j++) {
+			if (des.idVendor == supported_fx2[j].vid &&
+					des.idProduct == supported_fx2[j].pid &&
+					(!supported_fx2[j].usb_manufacturer ||
+					 !strcmp(manufacturer, supported_fx2[j].usb_manufacturer)) &&
+					(!supported_fx2[j].usb_product ||
+					 !strcmp(product, supported_fx2[j].usb_product))) {
+				prof = &supported_fx2[j];
+				break;
+			}
+		}
+		
+		if (!prof)
+			continue;
+		
+		if(prof->dev_caps & DEV_CAPS_FX3) {
+			has_firmware = usb_match_manuf_prod(devlist[i],
+				"sigrok", "fx3lafw");
+			if(!has_firmware) {
+				fx3_needed_firmware = TRUE;
+				sr_dbg("Found an fx3lafw compatible device that needs firmware! Attempting to upload firmware!");
+				if (ezusb_upload_firmware(drvc->sr_ctx, devlist[i],
+						USB_CONFIGURATION, prof->firmware,
+						(prof->dev_caps & DEV_CAPS_FX3)) == SR_OK)
+                        sr_dbg("Firmware uploaded to fx3lafw compatible device.");
+				else
+					sr_err("Firmware upload failed for "
+						   "device %d.%d (logical).",
+						   libusb_get_bus_number(devlist[i]),
+						   libusb_get_device_address(devlist[i]));
+			}
+		}
+	}
+	libusb_free_device_list(devlist, 1);
+	if(fx3_needed_firmware) {
+		sr_dbg("Found at least one fx3lafw compatible device that needed firmware, delaying for them to reconnect.");
+		g_usleep(500 * 1000);
+	}
 
 	/* Find all fx2lafw compatible devices and upload firmware to them. */
-	devices = NULL;
 	libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
 	for (i = 0; devlist[i]; i++) {
 		if (conn) {
@@ -301,7 +435,10 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 		sdi->connection_id = g_strdup(connection_id);
 
 		/* Fill in channellist according to this device's profile. */
-		num_logic_channels = prof->dev_caps & DEV_CAPS_16BIT ? 16 : 8;
+		num_logic_channels =
+			prof->dev_caps & DEV_CAPS_32BIT ? 32 :
+			(prof->dev_caps & DEV_CAPS_24BIT ? 24 :
+			 (prof->dev_caps & DEV_CAPS_16BIT ? 16 : 8));
 		num_analog_channels = prof->dev_caps & DEV_CAPS_AX_ANALOG ? 1 : 0;
 
 		/* Logic channels, all in one channel group. */
@@ -334,19 +471,22 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 
 		devc->samplerates = samplerates;
 		devc->num_samplerates = ARRAY_SIZE(samplerates);
-		has_firmware = usb_match_manuf_prod(devlist[i],
-				"sigrok", "fx2lafw");
+		if (!(prof->dev_caps & DEV_CAPS_FX3))
+			devc->num_samplerates -= NUM_FX3_RATES;
+		has_firmware = (usb_match_manuf_prod(devlist[i],
+				"sigrok", "fx2lafw") || usb_match_manuf_prod(devlist[i], "sigrok", "fx3lafw"));
 
 		if (has_firmware) {
 			/* Already has the firmware, so fix the new address. */
-			sr_dbg("Found an fx2lafw device.");
+			sr_dbg("Found an fx2lafw/fx3lafw device.");
 			sdi->status = SR_ST_INACTIVE;
 			sdi->inst_type = SR_INST_USB;
 			sdi->conn = sr_usb_dev_inst_new(libusb_get_bus_number(devlist[i]),
 					libusb_get_device_address(devlist[i]), NULL);
 		} else {
 			if (ezusb_upload_firmware(drvc->sr_ctx, devlist[i],
-					USB_CONFIGURATION, prof->firmware) == SR_OK) {
+					USB_CONFIGURATION, prof->firmware,
+					(prof->dev_caps & DEV_CAPS_FX3)) == SR_OK)
 				/* Store when this device's FW was updated. */
 				devc->fw_updated = g_get_monotonic_time();
 			} else {
