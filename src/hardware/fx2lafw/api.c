@@ -320,7 +320,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 			has_firmware = usb_match_manuf_prod(devlist[i],
 				"sigrok", "fx3lafw");
 			if(!has_firmware) {
-				fx3_needed_firmware = true;
+				fx3_needed_firmware = TRUE;
 				sr_dbg("Found an fx3lafw compatible device that needs firmware! Attempting to upload firmware!");
 				if (ezusb_upload_firmware(drvc->sr_ctx, devlist[i],
 						USB_CONFIGURATION, prof->firmware,
