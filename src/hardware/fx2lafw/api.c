@@ -214,7 +214,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 	const struct fx2lafw_profile *prof;
 	GSList *l, *devices, *conn_devices;
 	gboolean has_firmware;
-	gboolean fx3_needed_firmware;
+	gboolean fx3_needed_firmware = FALSE;
 	struct libusb_device_descriptor des;
 	libusb_device **devlist;
 	struct libusb_device_handle *hdl;
