@@ -343,7 +343,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 	libusb_free_device_list(devlist, 1);
 	if(fx3_needed_firmware) {
 		sr_dbg("Found at least one fx3lafw compatible device that needed firmware, delaying for them to reconnect.");
-		g_usleep(500 * 1000);
+		g_usleep(4000 * 1000);
 	}
 
 	/* Find all fx2lafw compatible devices and upload firmware to them. */
