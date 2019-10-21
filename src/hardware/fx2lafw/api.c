@@ -474,7 +474,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 		if (!(prof->dev_caps & DEV_CAPS_FX3))
 			devc->num_samplerates -= NUM_FX3_RATES;
 		has_firmware = (usb_match_manuf_prod(devlist[i],
-				"sigrok", "fx2lafw") || usb_match_manuf_prod(devlist[i], "sigrok", "fx3lafw"));
+				"sigrok", "fx2lafw") || usb_match_manuf_prod(devlist[i], "Cypress Semiconductor Corp.", "fx3lafw"));
 
 		if (has_firmware) {
 			/* Already has the firmware, so fix the new address. */
