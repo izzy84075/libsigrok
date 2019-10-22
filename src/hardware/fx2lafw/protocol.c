@@ -253,8 +253,8 @@ SR_PRIV int fx2lafw_dev_open(struct sr_dev_inst *sdi, struct sr_dev_driver *di)
 			usb->bus, usb->address, connection_id,
 			USB_INTERFACE, vi.major, vi.minor);
 
-		sr_info("Detected REVID=%d, it's a Cypress CY7C68013%s.",
-			revid, (revid != 1) ? " (FX2)" : "A (FX2LP)");
+		sr_info("Detected REVID=%d, it's a Cypress %s.",
+			revid, (revid == 1) ? "CY7C68013A (FX2LP)" : (revid == 0xFF) ? "(FX3)" : "CY7C68013 (FX2)" :);
 
 		ret = SR_OK;
 
