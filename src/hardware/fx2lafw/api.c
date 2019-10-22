@@ -323,19 +323,20 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 			continue;
 		
 		if(prof->dev_caps & DEV_CAPS_FX3) {
-			has_firmware = usb_match_manuf_prod(devlist[i], "Cypress Semiconductor Corp.", "fx3lafw");
+			has_firmware = usb_match_manuf_prod(devlist[i], "sigrok", "fx3lafw");
 			if(!has_firmware) {
 				fx3_needed_firmware = TRUE;
 				sr_dbg("Found an fx3lafw compatible device that needs firmware! Attempting to upload firmware!");
 				if (ezusb_upload_firmware(drvc->sr_ctx, devlist[i],
 						USB_CONFIGURATION, prof->firmware,
-						(prof->dev_caps & DEV_CAPS_FX3)) == SR_OK)
-                        sr_dbg("Firmware uploaded to fx3lafw compatible device.");
-				else
+						(prof->dev_caps & DEV_CAPS_FX3)) == SR_OK) {
+                    sr_dbg("Firmware uploaded to fx3lafw compatible device.");
+				} else {
 					sr_err("Firmware upload failed for "
 						   "device %d.%d (logical).",
 						   libusb_get_bus_number(devlist[i]),
 						   libusb_get_device_address(devlist[i]));
+				}
 			}
 		}
 	}
@@ -473,7 +474,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 		if (!(prof->dev_caps & DEV_CAPS_FX3))
 			devc->num_samplerates -= NUM_FX3_RATES;
 		has_firmware = (usb_match_manuf_prod(devlist[i],
-				"sigrok", "fx2lafw") || usb_match_manuf_prod(devlist[i], "Cypress Semiconductor Corp.", "fx3lafw"));
+				"sigrok", "fx2lafw") || usb_match_manuf_prod(devlist[i], "sigrok", "fx3lafw"));
 
 		if (has_firmware) {
 			/* Already has the firmware, so fix the new address. */
